@@ -664,9 +664,6 @@ stuffPlusServer <- function(id) {
         pfx_z = as.numeric(pfx_z_inches),
         plate_loc_side = as.numeric(plate_loc_side) * 12,
         plate_loc_height = as.numeric(plate_loc_height) * 12,
-        in_zone = 0,
-        out_zone = 0,
-        chase = 0,
         swing = 0,
         whiff = 0
       )
@@ -1259,70 +1256,131 @@ stuffPlusServer <- function(id) {
     })
     
     # ---- 10. Summary function ----------------------------------------
-    summarize_player_data <- function(data) {
-      data %>%
-        group_by(pitch_type) %>%
-        summarise(
-          Count = n(),
-          `Velo` = round(mean(release_speed, na.rm = TRUE), 1),
-          `iVB` = round(mean(pfx_z, na.rm = TRUE), 1),
-          `HB` = round(mean(pfx_x, na.rm = TRUE), 1),
-          `Spin` = round(mean(release_spin_rate, na.rm = TRUE), 0),
-          `vRel` = round(mean(release_pos_z, na.rm = TRUE), 1),
-          `hRel` = round(mean(release_pos_x, na.rm = TRUE), 1),
-          `Ext` = round(mean(release_extension, na.rm = TRUE), 1),
-          `Stuff+` = round(mean(stuff_plus, na.rm = TRUE), 0),
-          `Zone%` = round(mean(in_zone, na.rm = TRUE) * 100, 1),
-          `Chase%` = ifelse(sum(out_zone, na.rm = TRUE) > 0,
-                            round(sum(chase, na.rm = TRUE) / sum(out_zone, na.rm = TRUE) * 100, 1),
-                            0),
-          `Whiff%` = ifelse(sum(swing, na.rm = TRUE) > 0,
-                            round(sum(whiff, na.rm = TRUE) / sum(swing, na.rm = TRUE) * 100, 1),
-                            0),
-          .groups = 'drop'
-        ) %>%
-        arrange(desc(Count)) %>%
-        bind_rows(
-          data %>%
-            summarise(
-              pitch_type = "All",
-              Count = n(),
-              `Velo` = NA,
-              `iVB` = NA,
-              `HB` = NA,
-              `Spin` = NA,
-              `vRel` = NA,
-              `hRel` = NA,
-              `Ext` = round(mean(release_extension, na.rm = TRUE), 1),
-              `Stuff+` = round(mean(stuff_plus, na.rm = TRUE), 0),
-              `Zone%` = round(mean(in_zone, na.rm = TRUE) * 100, 1),
-              `Chase%` = ifelse(sum(out_zone, na.rm = TRUE) > 0,
-                                round(sum(chase, na.rm = TRUE) / sum(out_zone, na.rm = TRUE) * 100, 1),
-                                0),
-              `Whiff%` = ifelse(sum(swing, na.rm = TRUE) > 0,
-                                round(sum(whiff, na.rm = TRUE) / sum(swing, na.rm = TRUE) * 100, 1),
-                                0)
-            )
-        ) %>%
+    summarize_player_data <- function(data, include_zone_chase = TRUE) {
+      if (include_zone_chase) {
+        summary <- data %>%
+          group_by(pitch_type) %>%
+          summarise(
+            Count = n(),
+            `Velo` = round(mean(release_speed, na.rm = TRUE), 1),
+            `iVB` = round(mean(pfx_z, na.rm = TRUE), 1),
+            `HB` = round(mean(pfx_x, na.rm = TRUE), 1),
+            `Spin` = round(mean(release_spin_rate, na.rm = TRUE), 0),
+            `vRel` = round(mean(release_pos_z, na.rm = TRUE), 1),
+            `hRel` = round(mean(release_pos_x, na.rm = TRUE), 1),
+            `Ext` = round(mean(release_extension, na.rm = TRUE), 1),
+            `Stuff+` = round(mean(stuff_plus, na.rm = TRUE), 0),
+            `Zone%` = round(mean(in_zone, na.rm = TRUE) * 100, 1),
+            `Chase%` = ifelse(sum(out_zone, na.rm = TRUE) > 0,
+                              round(sum(chase, na.rm = TRUE) / sum(out_zone, na.rm = TRUE) * 100, 1),
+                              0),
+            `Whiff%` = ifelse(sum(swing, na.rm = TRUE) > 0,
+                              round(sum(whiff, na.rm = TRUE) / sum(swing, na.rm = TRUE) * 100, 1),
+                              0),
+            .groups = 'drop'
+          ) %>%
+          arrange(desc(Count))
+
+        summary_all <- data %>%
+          summarise(
+            pitch_type = "All",
+            Count = n(),
+            `Velo` = NA,
+            `iVB` = NA,
+            `HB` = NA,
+            `Spin` = NA,
+            `vRel` = NA,
+            `hRel` = NA,
+            `Ext` = round(mean(release_extension, na.rm = TRUE), 1),
+            `Stuff+` = round(mean(stuff_plus, na.rm = TRUE), 0),
+            `Zone%` = round(mean(in_zone, na.rm = TRUE) * 100, 1),
+            `Chase%` = ifelse(sum(out_zone, na.rm = TRUE) > 0,
+                              round(sum(chase, na.rm = TRUE) / sum(out_zone, na.rm = TRUE) * 100, 1),
+                              0),
+            `Whiff%` = ifelse(sum(swing, na.rm = TRUE) > 0,
+                              round(sum(whiff, na.rm = TRUE) / sum(swing, na.rm = TRUE) * 100, 1),
+                              0)
+          )
+      } else {
+        summary <- data %>%
+          group_by(pitch_type) %>%
+          summarise(
+            Count = n(),
+            `Velo` = round(mean(release_speed, na.rm = TRUE), 1),
+            `iVB` = round(mean(pfx_z, na.rm = TRUE), 1),
+            `HB` = round(mean(pfx_x, na.rm = TRUE), 1),
+            `Spin` = round(mean(release_spin_rate, na.rm = TRUE), 0),
+            `vRel` = round(mean(release_pos_z, na.rm = TRUE), 1),
+            `hRel` = round(mean(release_pos_x, na.rm = TRUE), 1),
+            `Ext` = round(mean(release_extension, na.rm = TRUE), 1),
+            `Stuff+` = round(mean(stuff_plus, na.rm = TRUE), 0),
+            `Whiff%` = ifelse(sum(swing, na.rm = TRUE) > 0,
+                              round(sum(whiff, na.rm = TRUE) / sum(swing, na.rm = TRUE) * 100, 1),
+                              0),
+            .groups = 'drop'
+          ) %>%
+          arrange(desc(Count))
+
+        summary_all <- data %>%
+          summarise(
+            pitch_type = "All",
+            Count = n(),
+            `Velo` = NA,
+            `iVB` = NA,
+            `HB` = NA,
+            `Spin` = NA,
+            `vRel` = NA,
+            `hRel` = NA,
+            `Ext` = round(mean(release_extension, na.rm = TRUE), 1),
+            `Stuff+` = round(mean(stuff_plus, na.rm = TRUE), 0),
+            `Whiff%` = ifelse(sum(swing, na.rm = TRUE) > 0,
+                              round(sum(whiff, na.rm = TRUE) / sum(swing, na.rm = TRUE) * 100, 1),
+                              0)
+          )
+      }
+
+      bind_rows(summary, summary_all) %>%
         rename(Type = pitch_type)
     }
     
     # ---- 11. Create compact table function ---------------------------
-    create_compact_table <- function(data) {
-      summary_data <- summarize_player_data(data)
-      
+    create_compact_table <- function(data, include_zone_chase = TRUE) {
+      summary_data <- summarize_player_data(data, include_zone_chase)
+
       # Format for display
+      percent_cols <- if (include_zone_chase) c("Zone%", "Chase%", "Whiff%") else c("Whiff%")
+
       summary_data <- summary_data %>%
         mutate(
           Count = format(Count, big.mark = ","),
-          across(c(`Velo`, `iVB`, `HB`, `vRel`, `hRel`, `Ext`), 
+          across(c(`Velo`, `iVB`, `HB`, `vRel`, `hRel`, `Ext`),
                  ~ifelse(is.na(.), "-", as.character(.))),
-          across(c(`Spin`, `Stuff+`), 
+          across(c(`Spin`, `Stuff+`),
                  ~ifelse(is.na(.), "-", format(., big.mark = ","))),
-          across(c(`Zone%`, `Chase%`, `Whiff%`), 
+          across(all_of(percent_cols),
                  ~paste0(., "%"))
         )
-      
+
+      column_defs <- if (include_zone_chase) {
+        list(
+          list(className = "dt-center", targets = "_all"),
+          list(width = "8%", targets = 0),
+          list(width = "8%", targets = 1),
+          list(width = "7%", targets = c(2:8)),
+          list(width = "8%", targets = 9),
+          list(width = "9%", targets = c(10:12))
+        )
+      } else {
+        list(
+          list(className = "dt-center", targets = "_all"),
+          list(width = "8%", targets = 0),
+          list(width = "8%", targets = 1),
+          list(width = "7%", targets = c(2:8)),
+          list(width = "8%", targets = 9),
+          list(width = "9%", targets = 10)
+        )
+      }
+
       datatable(
         summary_data,
         options = list(
@@ -1330,14 +1388,7 @@ stuffPlusServer <- function(id) {
           ordering = FALSE,
           autoWidth = TRUE,
           scrollX = TRUE,
-          columnDefs = list(
-            list(className = "dt-center", targets = "_all"),
-            list(width = "8%", targets = 0),
-            list(width = "8%", targets = 1),
-            list(width = "7%", targets = c(2:8)),
-            list(width = "8%", targets = 9),
-            list(width = "9%", targets = c(10:12))
-          )
+          columnDefs = column_defs
         ),
         rownames = FALSE,
         escape = FALSE
@@ -1846,7 +1897,7 @@ stuffPlusServer <- function(id) {
     output$p3_table1 <- renderDT({
       data <- get_p3_filtered_data1()
       req(!is.null(data))
-      create_compact_table(data)
+      create_compact_table(data, include_zone_chase = FALSE)
     })
     
     # Player 2 tables
@@ -1870,7 +1921,7 @@ stuffPlusServer <- function(id) {
     output$p3_table2 <- renderDT({
       data <- get_p3_filtered_data2()
       req(!is.null(data))
-      create_compact_table(data)
+      create_compact_table(data, include_zone_chase = FALSE)
     })
     
     output$season_stats_table1 <- renderDT({
