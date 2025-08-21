@@ -651,6 +651,10 @@ stuffPlusServer <- function(id) {
     mlb_choices <- setNames(as.character(mlb_players$pitcher), mlb_players$formatted_name)
 
     p3_data_all <- dbReadTable(con, "P3_Predictions") %>%
+      rename(
+        plate_loc_height = plate_location_height,
+        plate_loc_side = plate_location_side
+      ) %>%
       mutate(
         pitch_id = row_number(),
         date = as.Date(date),
@@ -662,6 +666,8 @@ stuffPlusServer <- function(id) {
         release_extension = as.numeric(release_extension),
         pfx_x = as.numeric(pfx_x_inches),
         pfx_z = as.numeric(pfx_z_inches),
+        plate_loc_side = as.numeric(plate_loc_side) * 12,
+        plate_loc_height = as.numeric(plate_loc_height) * 12,
         in_zone = 0,
         out_zone = 0,
         chase = 0,
@@ -1551,11 +1557,11 @@ stuffPlusServer <- function(id) {
           .groups = "drop"
         )
       
-      zone_width <- 17 / 12
-      zone_height <- 26 / 12
+      zone_width <- 17
+      zone_height <- 26
       zone_left <- -zone_width / 2
       zone_right <- zone_width / 2
-      zone_bottom <- 1.5
+      zone_bottom <- 18
       zone_top <- zone_bottom + zone_height
       
       ggplot(summary_data, aes(x = mean_x, y = mean_z, colour = pitch_type, fill = pitch_type)) +
@@ -1633,7 +1639,7 @@ stuffPlusServer <- function(id) {
       if (is.null(df) || nrow(df) == 0) return(NULL)
       
       plot_data <- df %>%
-        filter(!is.na(plate_location_side), !is.na(plate_location_height))
+        filter(!is.na(plate_loc_side), !is.na(plate_loc_height))
       
       if (nrow(plot_data) == 0) {
         return(ggplot() +
@@ -1647,18 +1653,18 @@ stuffPlusServer <- function(id) {
       summary_data <- plot_data %>%
         group_by(pitch_type) %>%
         summarise(
-          mean_x = mean(plate_location_side, na.rm = TRUE),
-          mean_z = mean(plate_location_height, na.rm = TRUE),
-          sd_x = sd(plate_location_side, na.rm = TRUE),
-          sd_z = sd(plate_location_height, na.rm = TRUE),
+          mean_x = mean(plate_loc_side, na.rm = TRUE),
+          mean_z = mean(plate_loc_height, na.rm = TRUE),
+          sd_x = sd(plate_loc_side, na.rm = TRUE),
+          sd_z = sd(plate_loc_height, na.rm = TRUE),
           .groups = "drop"
         )
       
-      zone_width <- 17 / 12
-      zone_height <- 26 / 12
+      zone_width <- 17
+      zone_height <- 26
       zone_left <- -zone_width / 2
       zone_right <- zone_width / 2
-      zone_bottom <- 1.5
+      zone_bottom <- 18
       zone_top <- zone_bottom + zone_height
       
       ggplot(summary_data, aes(x = mean_x, y = mean_z, colour = pitch_type, fill = pitch_type)) +
@@ -1670,8 +1676,8 @@ stuffPlusServer <- function(id) {
                   colour = "black", fill = NA, linewidth = 0.5) +
         scale_colour_manual(values = pitch_colors, na.value = "grey50") +
         scale_fill_manual(values = pitch_colors, na.value = "grey50") +
-        coord_fixed(xlim = c(-2, 2), ylim = c(0, 5)) +
-        labs(title = "Pitch Location", x = "Plate X (ft)", y = "Plate Z (ft)") +
+        coord_fixed(xlim = c(-24, 24), ylim = c(0, 60)) +
+        labs(title = "Pitch Location", x = "Plate X (in)", y = "Plate Z (in)") +
         theme_minimal(base_size = 11) +
         theme(
           plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
