@@ -651,10 +651,6 @@ stuffPlusServer <- function(id) {
     mlb_choices <- setNames(as.character(mlb_players$pitcher), mlb_players$formatted_name)
 
     p3_data_all <- dbReadTable(con, "P3_Predictions") %>%
-      rename(
-        plate_loc_height = plate_location_height,
-        plate_loc_side = plate_location_side
-      ) %>%
       mutate(
         pitch_id = row_number(),
         date = as.Date(date),
