@@ -11,7 +11,8 @@ library(httr)
 library(jsonlite)
 library(glue)
 library(purrr)
-library(googlesheets4)
+library(DBI)
+library(RPostgres)
 
 # ----------  UI -------------------------------------------------------
 stuffPlusUI <- function(id) {
@@ -558,40 +559,26 @@ stuffPlusServer <- function(id) {
     library(googledrive)
     ## put this once, right after library(googledrive)
     ## one-time helper (put near the top of the module)
-    safe_download <- function(id, path) {
-      googledrive::drive_download(
-        file       = googledrive::as_id(id),
-        path       = path,
-        overwrite  = TRUE,
-        verbose    = FALSE,
-        acknowledgeAbuse = TRUE    # <- the magic flag
-      )$local_path                  # keep same return value
-    }
-    
-    
-    
-    # Authenticate with Google Drive (will open browser for auth)
-    drive_deauth()
-    
-    csv_2023 <- safe_download("1RAd1NpTB6cYzy_2dljfzZAuwJeGh-paJ", tempfile(fileext = ".csv"))
-    csv_2024 <- safe_download("1o4tHKQ8ekBw4VKnBM6YHwbWLXouTBCt1", tempfile(fileext = ".csv"))
-    csv_2025 <- safe_download("17YO7tsXjpPda5CnAHWCLcXefFU4USB3e", tempfile(fileext = ".csv"))
-    
-    prm_2023 <- safe_download("1C4DjfNht0OomTTFauL0h_2hUohqmbfzn", tempfile(fileext = ".csv"))
-    prm_2024 <- safe_download("1KWwsaDXP4ae79UMe_kENY7ArnpDxNM6l", tempfile(fileext = ".csv"))
-    prm_2025 <- safe_download("1daBObOF0QSpHrotN9TVuse4Gzt93V2F7", tempfile(fileext = ".csv"))
-   
-    params <- bind_rows(
-      read_csv(prm_2023, show_col_types = FALSE),
-      read_csv(prm_2024, show_col_types = FALSE),
-      read_csv(prm_2025, show_col_types = FALSE)
-    ) %>%
+    # ---- Database connection ----------------------------------------
+    db_host <- "pitch-modeling.cvoesgo8szjk.us-east-2.rds.amazonaws.com"
+    db_port <- 5432
+    db_name <- "postgres"
+    db_user <- "premier3"
+    db_pass <- "premier3"
+
+    con <- dbConnect(
+      RPostgres::Postgres(),
+      host = db_host, port = db_port, dbname = db_name,
+      user = db_user, password = db_pass, sslmode = "require"
+    )
+
+    params <- dbReadTable(con, "stuff_plus_scaling") %>%
       mutate(year = as.integer(year))
-    
+
     swing_code <- c('foul_bunt', 'foul', 'hit_into_play', 'swinging_strike', 'foul_tip',
                     'swinging_strike_blocked', 'missed_bunt', 'bunt_foul_tip')
     whiff_code <- c('swinging_strike', 'foul_tip', 'swinging_strike_blocked')
-    
+
     # ---- API helper functions --------------------------------------
     get_pitcher_game_logs_api <- function(player_id, season = 2025) {
       url <- glue(
@@ -637,11 +624,7 @@ stuffPlusServer <- function(id) {
       })
     }
     
-    all_pitches <- bind_rows(
-      read_csv(csv_2023, show_col_types = FALSE),
-      read_csv(csv_2024, show_col_types = FALSE),
-      read_csv(csv_2025, show_col_types = FALSE)
-    ) %>%
+    all_pitches <- dbReadTable(con, "stuff_plus_predictions") %>%
       mutate(year = as.integer(year)) %>%
       left_join(params, by = "year") %>%
       mutate(
@@ -661,13 +644,13 @@ stuffPlusServer <- function(id) {
         game_date_formatted = format(as.Date(game_date), "%b %d, %Y")
       ) %>%
       select(-mean_predicted_target, -sd_predicted_target, -n_pitches, -name_parts)
-    
-    mlb_names <- sort(unique(all_pitches$formatted_name))
-    
-    p3_csv_path <- safe_download("11W0R29T5f97bkWu40931R-Z7kxLJ46-A", tempfile(fileext = ".csv"))
-    
-    p3_raw <- read_csv(p3_csv_path)
-    p3_data_all <- p3_raw %>%
+
+    mlb_players <- all_pitches %>%
+      distinct(pitcher, formatted_name) %>%
+      arrange(formatted_name)
+    mlb_choices <- setNames(as.character(mlb_players$pitcher), mlb_players$formatted_name)
+
+    p3_data_all <- dbReadTable(con, "P3_Predictions") %>%
       mutate(
         pitch_id = row_number(),
         date = as.Date(date),
@@ -675,8 +658,8 @@ stuffPlusServer <- function(id) {
         game_date = date,
         game_date_formatted = format(date, "%b %d, %Y"),
         year = as.integer(format(date, "%Y")),
-        release_spin_rate = as.numeric(spin_rate),
-        release_extension = as.numeric(extension),
+        release_spin_rate = as.numeric(release_spin_rate),
+        release_extension = as.numeric(release_extension),
         pfx_x = as.numeric(pfx_x_inches),
         pfx_z = as.numeric(pfx_z_inches),
         in_zone = 0,
@@ -685,7 +668,13 @@ stuffPlusServer <- function(id) {
         swing = 0,
         whiff = 0
       )
-    p3_names <- sort(unique(p3_data_all$formatted_name))
+
+    p3_players <- p3_data_all %>%
+      distinct(pitcher_id, formatted_name) %>%
+      arrange(formatted_name)
+    p3_choices <- setNames(p3_players$pitcher_id, p3_players$formatted_name)
+
+    dbDisconnect(con)
     
     # ---- 2. Reactive values for both players -------------------------
     player1_data <- reactiveVal(NULL)
@@ -694,28 +683,28 @@ stuffPlusServer <- function(id) {
     # ---- 3. Search functionality for both players --------------------
     # Player 1
     updateSelectizeInput(session, "player1_search",
-                         choices = mlb_names,
+                         choices = mlb_choices,
                          server = TRUE)
-    
+
     observeEvent(input$filter_toggle1, {
-      choices <- if (input$filter_toggle1 == "MLB") mlb_names else p3_names
+      choices <- if (input$filter_toggle1 == "MLB") mlb_choices else p3_choices
       updateSelectizeInput(session, "player1_search",
                            choices = choices,
                            selected = "",
                            server = TRUE)
       player1_data(NULL)
     })
-    
+
     observeEvent(input$player1_search, {
       req(input$player1_search)
       if (input$filter_toggle1 == "MLB") {
         data <- all_pitches %>%
-          filter(grepl(input$player1_search, formatted_name, ignore.case = TRUE))
+          filter(pitcher == as.numeric(input$player1_search))
       } else {
         data <- p3_data_all %>%
-          filter(grepl(input$player1_search, formatted_name, ignore.case = TRUE))
+          filter(pitcher_id == input$player1_search)
       }
-      
+
       if (nrow(data) > 0) {
         player1_data(data)
       } else {
@@ -725,28 +714,28 @@ stuffPlusServer <- function(id) {
     
     # Player 2
     updateSelectizeInput(session, "player2_search",
-                         choices = mlb_names,
+                         choices = mlb_choices,
                          server = TRUE)
-    
+
     observeEvent(input$filter_toggle2, {
-      choices <- if (input$filter_toggle2 == "MLB") mlb_names else p3_names
+      choices <- if (input$filter_toggle2 == "MLB") mlb_choices else p3_choices
       updateSelectizeInput(session, "player2_search",
                            choices = choices,
                            selected = "",
                            server = TRUE)
       player2_data(NULL)
     })
-    
+
     observeEvent(input$player2_search, {
       req(input$player2_search)
       if (input$filter_toggle2 == "MLB") {
         data <- all_pitches %>%
-          filter(grepl(input$player2_search, formatted_name, ignore.case = TRUE))
+          filter(pitcher == as.numeric(input$player2_search))
       } else {
         data <- p3_data_all %>%
-          filter(grepl(input$player2_search, formatted_name, ignore.case = TRUE))
+          filter(pitcher_id == input$player2_search)
       }
-      
+
       if (nrow(data) > 0) {
         player2_data(data)
       } else {
