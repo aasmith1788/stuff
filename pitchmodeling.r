@@ -37,10 +37,10 @@ stuffPlusUI <- function(id) {
         }
 
         .header-section {
-          background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+          background: #f8f9fa;
           padding: 32px;
           margin-bottom: 20px;
-          border: none;
+          border: 1px solid #e5e7eb;
           border-radius: 0;
           box-shadow: none;
           display: flex;
