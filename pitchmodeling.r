@@ -356,6 +356,34 @@ stuffPlusUI <- function(id) {
         "))
     ),
     
+    tags$script(HTML("
+$(document).ready(function() {
+  // Function to check if P3 should be disabled
+  function checkP3Access() {
+    Shiny.addCustomMessageHandler('disableP3', function(message) {
+      if (message.disable) {
+        // Disable P3 buttons and show tooltip
+        $('input[value=\"P3\"]').prop('disabled', true);
+        $('label[for*=\"P3\"]').css({
+          'opacity': '0.5',
+          'cursor': 'not-allowed',
+          'pointer-events': 'none'
+        }).attr('title', 'No P3 data available for your school');
+      } else {
+        // Enable P3 buttons
+        $('input[value=\"P3\"]').prop('disabled', false);
+        $('label[for*=\"P3\"]').css({
+          'opacity': '1',
+          'cursor': 'pointer',
+          'pointer-events': 'auto'
+        }).removeAttr('title');
+      }
+    });
+  }
+  
+  checkP3Access();
+});
+")),
     div(class = "main-container",
         # Header
         div(class = "header-section",
@@ -722,6 +750,14 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
         return(character(0))
       }
     })
+
+    # Check if user has P3 data and disable P3 buttons if not
+    observe({
+      p3_data <- p3_data_all()
+      has_p3_data <- !is.null(p3_data) && nrow(p3_data) > 0
+
+      session$sendCustomMessage("disableP3", list(disable = !has_p3_data))
+    })
     
     # ---- 2. Reactive values for both players -------------------------
     player1_data <- reactiveVal(NULL)
@@ -741,6 +777,15 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     })
 
     observeEvent(input$filter_toggle1, {
+      # Check if user has P3 data
+      if (input$filter_toggle1 == "P3") {
+        p3_data <- p3_data_all()
+        if (is.null(p3_data) || nrow(p3_data) == 0) {
+          updateRadioGroupButtons(session, "filter_toggle1", selected = "MLB")
+          return()
+        }
+      }
+
       choices <- if (input$filter_toggle1 == "MLB") mlb_choices else p3_choices()
       updateSelectizeInput(session, "player1_search",
                            choices = choices,
@@ -779,6 +824,15 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     })
 
     observeEvent(input$filter_toggle2, {
+      # Check if user has P3 data
+      if (input$filter_toggle2 == "P3") {
+        p3_data <- p3_data_all()
+        if (is.null(p3_data) || nrow(p3_data) == 0) {
+          updateRadioGroupButtons(session, "filter_toggle2", selected = "MLB")
+          return()
+        }
+      }
+
       choices <- if (input$filter_toggle2 == "MLB") mlb_choices else p3_choices()
       updateSelectizeInput(session, "player2_search",
                            choices = choices,
