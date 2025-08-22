@@ -553,7 +553,7 @@ stuffPlusUI <- function(id) {
 }
 
 # ----------  Server ---------------------------------------------------
-stuffPlusServer <- function(id) {
+stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
   moduleServer(id, function(input, output, session) {
     
     library(googledrive)
@@ -571,7 +571,11 @@ stuffPlusServer <- function(id) {
       host = db_host, port = db_port, dbname = db_name,
       user = db_user, password = db_pass, sslmode = "require"
     )
-    
+
+    session$onSessionEnded(function() {
+      dbDisconnect(con)
+    })
+
     params <- dbReadTable(con, "stuff_plus_scaling") %>%
       mutate(year = as.integer(year))
     
@@ -650,30 +654,74 @@ stuffPlusServer <- function(id) {
       arrange(formatted_name)
     mlb_choices <- setNames(as.character(mlb_players$pitcher), mlb_players$formatted_name)
     
-    p3_data_all <- dbReadTable(con, "P3_Predictions") %>%
-      mutate(
-        pitch_id = row_number(),
-        date = as.Date(date),
-        formatted_name = paste(firstname, lastname),
-        game_date = date,
-        game_date_formatted = format(date, "%b %d, %Y"),
-        year = as.integer(format(date, "%Y")),
-        release_spin_rate = as.numeric(release_spin_rate),
-        release_extension = as.numeric(release_extension),
-        pfx_x = as.numeric(pfx_x_inches),
-        pfx_z = as.numeric(pfx_z_inches),
-        plate_loc_side = as.numeric(plate_loc_side) * 12,
-        plate_loc_height = as.numeric(plate_loc_height) * 12,
-        swing = 0,
-        whiff = 0
-      )
-    
-    p3_players <- p3_data_all %>%
-      distinct(pitcher_id, formatted_name) %>%
-      arrange(formatted_name)
-    p3_choices <- setNames(p3_players$pitcher_id, p3_players$formatted_name)
-    
-    dbDisconnect(con)
+    # Load P3 data with school filtering
+    p3_data_all <- reactive({
+      req(userSchools())
+
+      if (identical(userSchools(), "ALL")) {
+        # Admin sees all P3 data
+        data <- dbReadTable(con, "P3_Predictions")
+      } else {
+        # Filter P3 data by school through vald_assessments bridge
+        school_list <- paste0("'", userSchools(), "'", collapse = ",")
+        query <- paste0("\n      SELECT p3.* \n      FROM \"P3_Predictions\" p3\n      JOIN vald_assessments va ON p3.pitcher_name = va.pitcher_name \n                              AND p3.date = va.recordedutc::date\n      JOIN vald_athletes vath ON va.athleteid = vath.profile_id\n      WHERE vath.current_school_name IN (", school_list, ")\n    ")
+        data <- dbGetQuery(con, query)
+      }
+
+      if (nrow(data) > 0) {
+        data %>%
+          mutate(
+            pitch_id = row_number(),
+            date = as.Date(date),
+            formatted_name = paste(firstname, lastname),
+            game_date = date,
+            game_date_formatted = format(date, "%b %d, %Y"),
+            year = as.integer(format(date, "%Y")),
+            release_spin_rate = as.numeric(release_spin_rate),
+            release_extension = as.numeric(release_extension),
+            pfx_x = as.numeric(pfx_x_inches),
+            pfx_z = as.numeric(pfx_z_inches),
+            plate_loc_side = as.numeric(plate_loc_side) * 12,
+            plate_loc_height = as.numeric(plate_loc_height) * 12,
+            swing = 0,
+            whiff = 0
+          )
+      } else {
+        # Return empty data frame with correct structure if no data
+        data.frame(
+          pitch_id = integer(0),
+          pitcher_id = character(0),
+          formatted_name = character(0),
+          date = as.Date(character(0)),
+          game_date = as.Date(character(0)),
+          game_date_formatted = character(0),
+          year = integer(0),
+          pitch_type = character(0),
+          release_speed = numeric(0),
+          release_spin_rate = numeric(0),
+          release_extension = numeric(0),
+          pfx_x = numeric(0),
+          pfx_z = numeric(0),
+          plate_loc_side = numeric(0),
+          plate_loc_height = numeric(0),
+          swing = numeric(0),
+          whiff = 0
+        )
+      }
+    })
+
+    # Get school-filtered P3 player choices
+    p3_choices <- reactive({
+      p3_data <- p3_data_all()
+      if (nrow(p3_data) > 0) {
+        players <- p3_data %>%
+          distinct(pitcher_id, formatted_name) %>%
+          arrange(formatted_name)
+        return(setNames(players$pitcher_id, players$formatted_name))
+      } else {
+        return(character(0))
+      }
+    })
     
     # ---- 2. Reactive values for both players -------------------------
     player1_data <- reactiveVal(NULL)
@@ -684,9 +732,16 @@ stuffPlusServer <- function(id) {
     updateSelectizeInput(session, "player1_search",
                          choices = mlb_choices,
                          server = TRUE)
-    
+
+    observe({
+      choices <- if (input$filter_toggle1 == "MLB") mlb_choices else p3_choices()
+      updateSelectizeInput(session, "player1_search",
+                           choices = choices,
+                           server = TRUE)
+    })
+
     observeEvent(input$filter_toggle1, {
-      choices <- if (input$filter_toggle1 == "MLB") mlb_choices else p3_choices
+      choices <- if (input$filter_toggle1 == "MLB") mlb_choices else p3_choices()
       updateSelectizeInput(session, "player1_search",
                            choices = choices,
                            selected = "",
@@ -700,7 +755,7 @@ stuffPlusServer <- function(id) {
         data <- all_pitches %>%
           filter(pitcher == as.numeric(input$player1_search))
       } else {
-        data <- p3_data_all %>%
+        data <- p3_data_all() %>%
           filter(pitcher_id == input$player1_search)
       }
       
@@ -715,9 +770,16 @@ stuffPlusServer <- function(id) {
     updateSelectizeInput(session, "player2_search",
                          choices = mlb_choices,
                          server = TRUE)
-    
+
+    observe({
+      choices <- if (input$filter_toggle2 == "MLB") mlb_choices else p3_choices()
+      updateSelectizeInput(session, "player2_search",
+                           choices = choices,
+                           server = TRUE)
+    })
+
     observeEvent(input$filter_toggle2, {
-      choices <- if (input$filter_toggle2 == "MLB") mlb_choices else p3_choices
+      choices <- if (input$filter_toggle2 == "MLB") mlb_choices else p3_choices()
       updateSelectizeInput(session, "player2_search",
                            choices = choices,
                            selected = "",
@@ -731,7 +793,7 @@ stuffPlusServer <- function(id) {
         data <- all_pitches %>%
           filter(pitcher == as.numeric(input$player2_search))
       } else {
-        data <- p3_data_all %>%
+        data <- p3_data_all() %>%
           filter(pitcher_id == input$player2_search)
       }
       
