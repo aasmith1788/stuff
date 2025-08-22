@@ -993,13 +993,17 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     })
     
     output$p3_date_picker_ui1 <- renderUI({
-      req(player1_data())
+      data <- player1_data()
+      if (is.null(data) || nrow(data) == 0) return(NULL)
+
       ns <- session$ns
-      dates <- player1_data() %>%
+      dates <- data %>%
         select(date) %>%
         distinct() %>%
         arrange(desc(date))
-      
+
+      if (nrow(dates) == 0) return(NULL)
+
       pickerInput(
         inputId = ns("p3_dates1"),
         label = NULL,
@@ -1018,10 +1022,12 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     })
     
     output$p3_pitch_type_ui1 <- renderUI({
-      req(player1_data())
-      req(input$p3_dates1)
+      data <- player1_data()
+      if (is.null(data) || nrow(data) == 0) return(NULL)
+      if (is.null(input$p3_dates1) || length(input$p3_dates1) == 0) return(NULL)
+
       ns <- session$ns
-      df <- player1_data() %>%
+      df <- data %>%
         filter(as.Date(date) %in% as.Date(input$p3_dates1)) %>%
         mutate(label = paste0(row_number(), "# ", pitch_type, " ",
                               round(as.numeric(release_speed), 1)))
@@ -1087,13 +1093,17 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     })
     
     output$p3_date_picker_ui2 <- renderUI({
-      req(player2_data())
+      data <- player2_data()
+      if (is.null(data) || nrow(data) == 0) return(NULL)
+
       ns <- session$ns
-      dates <- player2_data() %>%
+      dates <- data %>%
         select(date) %>%
         distinct() %>%
         arrange(desc(date))
-      
+
+      if (nrow(dates) == 0) return(NULL)
+
       pickerInput(
         inputId = ns("p3_dates2"),
         label = NULL,
@@ -1112,10 +1122,12 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     })
     
     output$p3_pitch_type_ui2 <- renderUI({
-      req(player2_data())
-      req(input$p3_dates2)
+      data <- player2_data()
+      if (is.null(data) || nrow(data) == 0) return(NULL)
+      if (is.null(input$p3_dates2) || length(input$p3_dates2) == 0) return(NULL)
+
       ns <- session$ns
-      df <- player2_data() %>%
+      df <- data %>%
         filter(as.Date(date) %in% as.Date(input$p3_dates2)) %>%
         mutate(label = paste0(row_number(), "# ", pitch_type, " ",
                               round(as.numeric(release_speed), 1)))
@@ -1223,8 +1235,8 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     })
     
     get_p3_filtered_data1 <- reactive({
-      req(player1_data())
       data <- player1_data()
+      if (is.null(data) || nrow(data) == 0) return(data.frame())
       if (!is.null(input$p3_dates1) && length(input$p3_dates1) > 0) {
         data <- data %>% filter(as.Date(date) %in% as.Date(input$p3_dates1))
       }
@@ -1233,10 +1245,10 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
       }
       data
     })
-    
+
     get_p3_filtered_data2 <- reactive({
-      req(player2_data())
       data <- player2_data()
+      if (is.null(data) || nrow(data) == 0) return(data.frame())
       if (!is.null(input$p3_dates2) && length(input$p3_dates2) > 0) {
         data <- data %>% filter(as.Date(date) %in% as.Date(input$p3_dates2))
       }
@@ -2191,7 +2203,11 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     
     output$p3_summary_ui1 <- renderUI({
       data <- get_p3_filtered_data1()
-      if (is.null(data) || nrow(data) == 0) return(NULL)
+      if (is.null(data) || nrow(data) == 0) {
+        return(div(class = "no-results",
+                   h3("No P3 Data Available"),
+                   p("This school doesn't have P3 pitch tracking data, but you can still access MLB data.")))
+      }
       ns <- session$ns
       tagList(
         h3("P3 Pitch Metrics", class = "section-title"),
@@ -2287,7 +2303,11 @@ stuffPlusServer <- function(id, userSchools = reactive("ALL")) {
     
     output$p3_summary_ui2 <- renderUI({
       data <- get_p3_filtered_data2()
-      if (is.null(data) || nrow(data) == 0) return(NULL)
+      if (is.null(data) || nrow(data) == 0) {
+        return(div(class = "no-results",
+                   h3("No P3 Data Available"),
+                   p("This school doesn't have P3 pitch tracking data, but you can still access MLB data.")))
+      }
       ns <- session$ns
       tagList(
         h3("P3 Pitch Metrics", class = "section-title"),
